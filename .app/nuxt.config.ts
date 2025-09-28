@@ -6,6 +6,10 @@ export default defineNuxtConfig({
 
   // GitHub Pages configuration
   ssr: false, // Disable server-side rendering for static generation
+  app: {
+    baseURL: '/girls-frontend/',
+    buildAssetsDir: '/_nuxt/',
+  },
   nitro: {
     prerender: {
       routes: ['/'], // Pre-render your routes
