@@ -11,5 +11,6 @@ export default antfu({
   rules: {
     'unused-imports/no-unused-vars': 'off',
     'ts/ban-ts-comment': 'off',
+    'no-console': 'off',
   },
 })
