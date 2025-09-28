@@ -3,6 +3,15 @@ export default defineNuxtConfig({
   future: {
     compatibilityVersion: 4,
   },
+
+  // GitHub Pages configuration
+  ssr: false, // Disable server-side rendering for static generation
+  nitro: {
+    prerender: {
+      routes: ['/'], // Pre-render your routes
+    },
+  },
+
   extends: [
     /**
      * This extends the base Tairo layer.
