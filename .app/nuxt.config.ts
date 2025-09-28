@@ -7,7 +7,7 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
-      apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8001',
+      apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'https://cachallenge-backend.onrender.com',
     },
   },
   // GitHub Pages configuration
