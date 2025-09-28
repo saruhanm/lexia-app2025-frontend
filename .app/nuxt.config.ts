@@ -1,9 +1,15 @@
+import process from 'node:process'
+
 export default defineNuxtConfig({
   compatibilityDate: '2024-11-26',
   future: {
     compatibilityVersion: 4,
   },
-
+  runtimeConfig: {
+    public: {
+      apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8001',
+    },
+  },
   // GitHub Pages configuration
   ssr: false, // Disable server-side rendering for static generation
   app: {
