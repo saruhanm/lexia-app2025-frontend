@@ -1,6 +1,19 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
+// Emit events for parent components
+const emit = defineEmits<{
+  loginSuccess: [form: LoginForm]
+  signupSuccess: [form: SignupForm]
+  error: [message: string]
+  notification: [message: string]
+  redirectToMain: []
+}>()
+const isLoggedIn = computed(() => {
+  // Check both cookie and localStorage for token
+  const authCookie = useCookie('authToken')
+  return Boolean(authCookie.value || localStorage.getItem('authToken'))
+})
 // Define interfaces for form data
 interface LoginForm {
   username: string
@@ -21,23 +34,15 @@ interface SignupForm {
   confirmPassword: string
 }
 
-// Emit events for parent components
-const emit = defineEmits<{
-  loginSuccess: [form: LoginForm]
-  signupSuccess: [form: SignupForm]
-  error: [message: string]
-  notification: [message: string]
-  redirectToMain: []
-}>()
-
 // Reactive state
-const showSignup = ref(false)
 const isLoading = ref(false)
 
 const loginForm = ref({
   username: '',
   password: '',
 })
+
+const rememberMe = ref(false)
 
 const signupForm = ref({
   username: '',
@@ -97,12 +102,17 @@ async function handleLogin() {
     if (response?.access_token) {
       console.log('Login successful, token received')
 
+      // Determine token expiration based on "Remember me" checkbox
+      const tokenExpiration = rememberMe.value
+        ? 60 * 60 * 24 * 30 // 30 days if "Remember me" is checked
+        : response.expires_in || 60 * 60 * 24 * 7 // Default 7 days or server-provided expiration
+
       // Store token in localStorage for persistence
       localStorage.setItem('authToken', response.access_token)
 
       // Or use Nuxt cookie (recommended)
       const authToken = useCookie('authToken', {
-        maxAge: response.expires_in || 60 * 60 * 24 * 7, // 7 days default
+        maxAge: tokenExpiration,
       })
       authToken.value = response.access_token
     }
@@ -128,6 +138,7 @@ async function handleLogin() {
       username: '',
       password: '',
     }
+    rememberMe.value = false
 
     console.log('Successfully navigated to main screen')
   }
@@ -151,39 +162,13 @@ async function handleLogin() {
     isLoading.value = false
   }
 }
-
-async function handleSignup() {
-  try {
-    // console.log('Signup attempt:', signupForm.value) // Debug logging removed
-
-    if (!signupForm.value.username || !signupForm.value.email
-      || !signupForm.value.password || !signupForm.value.confirmPassword) {
-      emit('error', 'Please fill in all fields')
-      return
-    }
-
-    if (signupForm.value.password !== signupForm.value.confirmPassword) {
-      emit('error', 'Passwords do not match')
-      return
-    }
-
-    // Emit success event to parent
-    emit('signupSuccess', signupForm.value)
-
-    // Reset form and switch to login
-    signupForm.value = {
-      username: '',
-      email: '',
-      password: '',
-      confirmPassword: '',
-    }
-    showSignup.value = false
+onMounted(() => {
+  // If user is already logged in, redirect to main screen
+  if (isLoggedIn.value) {
+    console.log('User already logged in, redirecting to main screen')
+    navigateTo('/main')
   }
-  catch (error) {
-    console.error('Signup error:', error)
-    emit('error', 'Signup failed. Please try again.')
-  }
-}
+})
 </script>
 
 <template>
@@ -208,7 +193,7 @@ async function handleSignup() {
         <!-- Auth Forms Container -->
         <div class="w-full">
           <!-- Login Form -->
-          <div v-if="!showSignup" class="bg-white rounded-2xl shadow-xl shadow-blue-100/50 p-6 space-y-6">
+          <div class="bg-white rounded-2xl shadow-xl shadow-blue-100/50 p-6 space-y-6">
             <div class="text-center mb-6">
               <h3 class="text-xl font-semibold text-gray-800 mb-2">
                 Sign In
@@ -246,7 +231,11 @@ async function handleSignup() {
 
               <div class="flex items-center justify-between text-sm pt-2">
                 <label class="flex items-center space-x-2 cursor-pointer">
-                  <input type="checkbox" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                  <input
+                    v-model="rememberMe"
+                    type="checkbox"
+                    class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  >
                   <span class="text-gray-600">Remember me</span>
                 </label>
                 <button type="button" class="text-blue-600 hover:text-blue-700 font-medium hover:underline transition-colors">
@@ -281,100 +270,9 @@ async function handleSignup() {
 
             <button
               class="w-full text-blue-600 hover:text-blue-700 font-semibold py-2 hover:bg-blue-50 rounded-xl transition-all duration-200"
-              @click="showSignup = true"
+              @click="navigateTo('/createaccount')"
             >
               Create an account
-            </button>
-          </div>
-
-          <!-- Signup Form -->
-          <div v-else class="bg-white rounded-2xl shadow-xl shadow-blue-100/50 p-6 space-y-6">
-            <div class="text-center mb-6">
-              <h3 class="text-xl font-semibold text-gray-800 mb-2">
-                Create Account
-              </h3>
-              <p class="text-gray-600 text-sm leading-relaxed">
-                Join Lexia to make reading easier with personalized formatting
-              </p>
-            </div>
-
-            <form class="space-y-4" @submit.prevent="handleSignup">
-              <div class="space-y-4">
-                <div>
-                  <label for="signup-username" class="block text-sm font-medium text-gray-700 mb-2">Username</label>
-                  <input
-                    id="signup-username"
-                    v-model="signupForm.username"
-                    type="text"
-                    placeholder="Choose a username"
-                    class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white text-sm"
-                    required
-                  >
-                </div>
-                <div>
-                  <label for="signup-email" class="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                  <input
-                    id="signup-email"
-                    v-model="signupForm.email"
-                    type="email"
-                    placeholder="Enter your email"
-                    class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white text-sm"
-                    required
-                  >
-                </div>
-                <div>
-                  <label for="signup-password" class="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                  <input
-                    id="signup-password"
-                    v-model="signupForm.password"
-                    type="password"
-                    placeholder="Create a password"
-                    class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white text-sm"
-                    required
-                  >
-                </div>
-                <div>
-                  <label for="signup-confirm-password" class="block text-sm font-medium text-gray-700 mb-2">Confirm Password</label>
-                  <input
-                    id="signup-confirm-password"
-                    v-model="signupForm.confirmPassword"
-                    type="password"
-                    placeholder="Confirm your password"
-                    class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white text-sm"
-                    required
-                  >
-                </div>
-              </div>
-
-              <div class="flex items-start space-x-2 pt-2">
-                <input type="checkbox" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-1" required>
-                <label class="text-sm text-gray-600 leading-relaxed">
-                  I agree to the <button type="button" class="text-blue-600 hover:underline">Terms of Service</button> and <button type="button" class="text-blue-600 hover:underline">Privacy Policy</button>
-                </label>
-              </div>
-
-              <button
-                type="submit"
-                class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-3 rounded-xl font-semibold text-sm transition-all duration-200 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 shadow-lg"
-              >
-                Create Account
-              </button>
-            </form>
-
-            <div class="relative">
-              <div class="absolute inset-0 flex items-center">
-                <div class="w-full border-t border-gray-200" />
-              </div>
-              <div class="relative flex justify-center text-sm">
-                <span class="px-4 bg-white text-gray-500">Already have an account?</span>
-              </div>
-            </div>
-
-            <button
-              class="w-full text-blue-600 hover:text-blue-700 font-semibold py-2 hover:bg-blue-50 rounded-xl transition-all duration-200"
-              @click="showSignup = false"
-            >
-              Sign in instead
             </button>
           </div>
         </div>

@@ -19,6 +19,31 @@ function handleGetStarted() {
 const userInfo = ref({
   fullName: 'John Doe', // This would come from props or store
 })
+
+function handleLogout() {
+  console.log('Logout clicked!')
+
+  try {
+    // Clear the auth cookie
+    const authCookie = useCookie('authToken')
+    authCookie.value = null
+
+    // Clear localStorage token
+    if (process.client) {
+      localStorage.removeItem('authToken')
+    }
+
+    console.log('Tokens cleared successfully')
+
+    // Navigate back to login page
+    navigateTo('/')
+
+    console.log('Redirected to login page')
+  }
+  catch (error) {
+    console.error('Error during logout:', error)
+  }
+}
 </script>
 
 <template>
@@ -62,7 +87,7 @@ const userInfo = ref({
               </button>
               <button
                 class="bg-white border border-gray-300 hover:border-gray-400 text-gray-700 hover:text-gray-800 py-3 rounded-xl font-medium transition-all duration-200 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 shadow-sm"
-                @click="emit('openAccount')"
+                @click="handleLogout"
               >
                 Logout
               </button>
