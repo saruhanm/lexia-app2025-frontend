@@ -296,7 +296,7 @@ function clearError() {
 
             <button
               class="w-full text-blue-600 hover:text-blue-700 font-semibold py-2 hover:bg-blue-50 rounded-xl transition-all duration-200"
-              @click="emit('switchToLogin')"
+              @click="navigateTo('/')"
             >
               Sign in instead
             </button>

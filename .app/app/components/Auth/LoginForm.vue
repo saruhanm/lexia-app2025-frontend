@@ -25,6 +25,7 @@ interface AuthResponse {
   access_token?: string
   token_type?: string
   expires_in?: number
+  user_id?: string
 }
 
 interface SignupForm {
@@ -109,6 +110,9 @@ async function handleLogin() {
 
       // Store token in localStorage for persistence
       localStorage.setItem('authToken', response.access_token)
+      if (response?.user_id) {
+        localStorage.setItem('userId', response.user_id)
+      }
 
       // Or use Nuxt cookie (recommended)
       const authToken = useCookie('authToken', {

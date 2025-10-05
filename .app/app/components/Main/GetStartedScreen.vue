@@ -1,117 +1,333 @@
 <script setup lang="ts">
+import { nextTick, ref } from 'vue'
+
 // Emit events for parent components
 const emit = defineEmits<{
   takePhoto: []
   uploadImage: []
   goBack: []
+  photoTaken: [imageData: string]
+  imageUploaded: [imageData: string]
 }>()
+
+// Camera state
+const showCamera = ref(false)
+const videoRef = ref<HTMLVideoElement>()
+const canvasRef = ref<HTMLCanvasElement>()
+const stream = ref<MediaStream | null>(null)
+const isCameraLoading = ref(false)
+const cameraError = ref('')
+
+// File upload state
+const fileInputRef = ref<HTMLInputElement>()
+
+async function startCamera() {
+  try {
+    isCameraLoading.value = true
+    cameraError.value = ''
+
+    // Request camera access
+    const mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'environment', // Use back camera on mobile
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+    })
+
+    stream.value = mediaStream
+    showCamera.value = true
+
+    // Wait for DOM update
+    await nextTick()
+
+    if (videoRef.value) {
+      videoRef.value.srcObject = mediaStream
+      await videoRef.value.play()
+    }
+  }
+  catch (error) {
+    console.error('Error accessing camera:', error)
+    cameraError.value = 'Unable to access camera. Please check permissions.'
+  }
+  finally {
+    isCameraLoading.value = false
+  }
+}
+
+function capturePhoto() {
+  if (!videoRef.value || !canvasRef.value)
+    return
+
+  const video = videoRef.value
+  const canvas = canvasRef.value
+  const context = canvas.getContext('2d')
+
+  if (!context)
+    return
+
+  // Set canvas dimensions to match video
+  canvas.width = video.videoWidth
+  canvas.height = video.videoHeight
+
+  // Draw video frame to canvas
+  context.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+  // Get image data as base64
+  const imageData = canvas.toDataURL('image/jpeg', 0.8)
+
+  // Emit the captured photo
+  emit('photoTaken', imageData)
+
+  // Close camera
+  closeCamera()
+}
+
+function closeCamera() {
+  if (stream.value) {
+    stream.value.getTracks().forEach(track => track.stop())
+    stream.value = null
+  }
+  showCamera.value = false
+  cameraError.value = ''
+}
+
+function handleTakePhoto() {
+  startCamera()
+}
+
+function handleUploadImage() {
+  if (fileInputRef.value) {
+    fileInputRef.value.click()
+  }
+}
+
+function handleFileChange(event: Event) {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+
+  if (file && file.type.startsWith('image/')) {
+    const reader = new FileReader()
+
+    reader.onload = (e) => {
+      const imageData = e.target?.result as string
+      emit('imageUploaded', imageData)
+    }
+
+    reader.readAsDataURL(file)
+  }
+  else {
+    console.error('Please select a valid image file')
+  }
+
+  // Reset the input value so the same file can be selected again
+  if (target) {
+    target.value = ''
+  }
+}
 </script>
 
 <template>
   <div class="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
     <div class="w-full">
       <div class="max-w-sm mx-auto px-6 py-8">
-        <!-- Header with Back Button -->
-        <div class="flex items-center mb-6">
-          <button
-            class="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors mr-3"
-            @click="navigateTo('/main')"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-            Get Started
-          </h1>
+        <!-- Camera View -->
+        <div v-if="showCamera" class="fixed inset-0 bg-black z-50 flex flex-col">
+          <!-- Camera Header -->
+          <div class="flex items-center justify-between p-4 bg-black/50 text-white">
+            <button
+              class="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              @click="closeCamera"
+            >
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <h2 class="text-lg font-semibold">
+              Take Photo
+            </h2>
+            <div class="w-10" />
+          </div>
+
+          <!-- Video Preview -->
+          <div class="flex-1 relative">
+            <video
+              ref="videoRef"
+              class="w-full h-full object-cover"
+              playsinline
+              muted
+            />
+
+            <!-- Overlay for better UX -->
+            <div class="absolute inset-0 border-2 border-white/30 m-8 rounded-lg pointer-events-none" />
+          </div>
+
+          <!-- Camera Controls -->
+          <div class="p-6 bg-black/50">
+            <div class="flex items-center justify-center space-x-8">
+              <!-- Cancel Button -->
+              <button
+                class="w-12 h-12 border-2 border-white/50 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+                @click="closeCamera"
+              >
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+
+              <!-- Capture Button -->
+              <button
+                class="w-20 h-20 bg-white rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-lg"
+                @click="capturePhoto"
+              >
+                <div class="w-16 h-16 bg-white border-4 border-gray-300 rounded-full" />
+              </button>
+
+              <!-- Settings Button (placeholder) -->
+              <button
+                class="w-12 h-12 border-2 border-white/50 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+              >
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Hidden canvas for photo capture -->
+          <canvas ref="canvasRef" class="hidden" />
         </div>
 
-        <!-- Main Action Card -->
-        <div class="bg-white rounded-2xl shadow-xl shadow-blue-100/50 p-6 mb-6">
-          <div class="text-center mb-6">
-            <div class="w-16 h-16 bg-gradient-to-r from-blue-100 to-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+        <!-- Normal UI (when camera is not active) -->
+        <div v-if="!showCamera">
+          <!-- Header with Back Button -->
+          <div class="flex items-center mb-6">
+            <button
+              class="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors mr-3"
+              @click="navigateTo('/main')"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
               </svg>
+            </button>
+            <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+              Get Started
+            </h1>
+          </div>
+
+          <!-- Camera Loading State -->
+          <div v-if="isCameraLoading" class="bg-white rounded-2xl shadow-xl shadow-blue-100/50 p-6 mb-6">
+            <div class="flex items-center justify-center space-x-2">
+              <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+              <span class="text-gray-600">Starting camera...</span>
             </div>
-            <h3 class="text-lg font-semibold text-gray-800 mb-2">
-              Capture or Upload Text
-            </h3>
-            <p class="text-gray-600 text-sm">
-              Take a photo of any text or upload an existing image to get started with personalized formatting.
+          </div>
+
+          <!-- Camera Error -->
+          <div v-if="cameraError" class="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6">
+            <p class="text-red-700 text-sm">
+              {{ cameraError }}
             </p>
           </div>
 
-          <div class="space-y-3">
-            <!-- Take Photo Button -->
-            <button
-              class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-4 rounded-xl font-semibold transition-all duration-200 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 shadow-lg flex items-center justify-center space-x-2"
-              @click="emit('takePhoto')"
-            >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <span>Take Photo</span>
-            </button>
+          <!-- Main Action Card -->
+          <div class="bg-white rounded-2xl shadow-xl shadow-blue-100/50 p-6 mb-6">
+            <div class="text-center mb-6">
+              <div class="w-16 h-16 bg-gradient-to-r from-blue-100 to-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <h3 class="text-lg font-semibold text-gray-800 mb-2">
+                Capture or Upload Text
+              </h3>
+              <p class="text-gray-600 text-sm">
+                Take a photo of any text or upload an existing image to get started with personalized formatting.
+              </p>
+            </div>
 
-            <!-- Upload Image Button -->
-            <button
-              class="w-full border border-gray-300 hover:border-gray-400 text-gray-700 hover:text-gray-800 py-4 rounded-xl font-medium transition-all duration-200 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center justify-center space-x-2"
-              @click="emit('uploadImage')"
-            >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-              <span>Upload Image</span>
-            </button>
+            <div class="space-y-3">
+              <!-- Take Photo Button -->
+              <button
+                class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-4 rounded-xl font-semibold transition-all duration-200 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 shadow-lg flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                :disabled="isCameraLoading"
+                @click="handleTakePhoto"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span>{{ isCameraLoading ? 'Starting Camera...' : 'Take Photo' }}</span>
+              </button>
+
+              <!-- Upload Image Button -->
+              <button
+                class="w-full border border-gray-300 hover:border-gray-400 text-gray-700 hover:text-gray-800 py-4 rounded-xl font-medium transition-all duration-200 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center justify-center space-x-2"
+                @click="handleUploadImage"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                <span>Upload Image</span>
+              </button>
+
+              <!-- Hidden file input -->
+              <input
+                ref="fileInputRef"
+                type="file"
+                accept="image/*"
+                class="hidden"
+                @change="handleFileChange"
+              >
+            </div>
           </div>
-        </div>
 
-        <!-- Tips Section -->
-        <div class="space-y-4">
-          <h4 class="text-sm font-medium text-gray-700 uppercase tracking-wide">
-            Tips for best results
-          </h4>
-          <div class="space-y-3">
-            <div class="flex items-start space-x-3 p-3 bg-white rounded-lg shadow-sm">
-              <div class="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-semibold mt-0.5">
-                ✓
+          <!-- Tips Section -->
+          <div class="space-y-4">
+            <h4 class="text-sm font-medium text-gray-700 uppercase tracking-wide">
+              Tips for best results
+            </h4>
+            <div class="space-y-3">
+              <div class="flex items-start space-x-3 p-3 bg-white rounded-lg shadow-sm">
+                <div class="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-semibold mt-0.5">
+                  ✓
+                </div>
+                <div>
+                  <p class="text-sm font-medium text-gray-800">
+                    Good lighting
+                  </p>
+                  <p class="text-xs text-gray-600">
+                    Make sure the text is well-lit and clearly visible
+                  </p>
+                </div>
               </div>
-              <div>
-                <p class="text-sm font-medium text-gray-800">
-                  Good lighting
-                </p>
-                <p class="text-xs text-gray-600">
-                  Make sure the text is well-lit and clearly visible
-                </p>
+              <div class="flex items-start space-x-3 p-3 bg-white rounded-lg shadow-sm">
+                <div class="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-semibold mt-0.5">
+                  ✓
+                </div>
+                <div>
+                  <p class="text-sm font-medium text-gray-800">
+                    Hold steady
+                  </p>
+                  <p class="text-xs text-gray-600">
+                    Keep your phone steady for sharp, clear text
+                  </p>
+                </div>
               </div>
-            </div>
-            <div class="flex items-start space-x-3 p-3 bg-white rounded-lg shadow-sm">
-              <div class="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-semibold mt-0.5">
-                ✓
-              </div>
-              <div>
-                <p class="text-sm font-medium text-gray-800">
-                  Hold steady
-                </p>
-                <p class="text-xs text-gray-600">
-                  Keep your phone steady for sharp, clear text
-                </p>
-              </div>
-            </div>
-            <div class="flex items-start space-x-3 p-3 bg-white rounded-lg shadow-sm">
-              <div class="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-semibold mt-0.5">
-                ✓
-              </div>
-              <div>
-                <p class="text-sm font-medium text-gray-800">
-                  Fill the frame
-                </p>
-                <p class="text-xs text-gray-600">
-                  Get close enough so the text fills most of the screen
-                </p>
+              <div class="flex items-start space-x-3 p-3 bg-white rounded-lg shadow-sm">
+                <div class="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-semibold mt-0.5">
+                  ✓
+                </div>
+                <div>
+                  <p class="text-sm font-medium text-gray-800">
+                    Fill the frame
+                  </p>
+                  <p class="text-xs text-gray-600">
+                    Get close enough so the text fills most of the screen
+                  </p>
+                </div>
               </div>
             </div>
           </div>
