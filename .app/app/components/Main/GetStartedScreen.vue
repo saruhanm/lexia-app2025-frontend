@@ -258,7 +258,7 @@ async function handleFileChange(event: Event) {
         <!-- Camera View -->
         <div
           v-if="showCamera"
-          class="fixed inset-0 min-h-[100dvh] overflow-y-auto bg-black z-50 flex flex-col"
+          class="fixed inset-0 h-[100dvh] overflow-hidden bg-black z-50 flex flex-col"
         >
           <!-- Camera Header -->
           <div
@@ -279,7 +279,7 @@ async function handleFileChange(event: Event) {
           </div>
 
           <!-- Video Preview -->
-          <div class="flex-1 relative">
+          <div class="flex-1 relative pb-28">
             <video
               ref="videoRef"
               class="w-full h-full object-cover"
@@ -293,7 +293,7 @@ async function handleFileChange(event: Event) {
 
           <!-- Camera Controls -->
           <div
-            class="relative z-10 p-6 pb-[calc(env(safe-area-inset-bottom)+1rem)] bg-black/50"
+            class="fixed bottom-0 left-0 right-0 z-10 p-6 pb-[calc(env(safe-area-inset-bottom)+1rem)] bg-black/50"
           >
             <div class="flex items-center justify-center space-x-8">
               <!-- Cancel Button -->
