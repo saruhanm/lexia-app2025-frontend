@@ -256,9 +256,14 @@ async function handleFileChange(event: Event) {
         </div>
 
         <!-- Camera View -->
-        <div v-if="showCamera" class="fixed inset-0 bg-black z-50 flex flex-col">
+        <div
+          v-if="showCamera"
+          class="fixed inset-0 min-h-[100dvh] overflow-y-auto bg-black z-50 flex flex-col"
+        >
           <!-- Camera Header -->
-          <div class="flex items-center justify-between p-4 bg-black/50 text-white">
+          <div
+            class="flex items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+0.5rem)] bg-black/50 text-white"
+          >
             <button
               class="p-2 hover:bg-white/20 rounded-lg transition-colors"
               @click="closeCamera"
@@ -287,7 +292,9 @@ async function handleFileChange(event: Event) {
           </div>
 
           <!-- Camera Controls -->
-          <div class="p-6 bg-black/50">
+          <div
+            class="relative z-10 p-6 pb-[calc(env(safe-area-inset-bottom)+1rem)] bg-black/50"
+          >
             <div class="flex items-center justify-center space-x-8">
               <!-- Cancel Button -->
               <button

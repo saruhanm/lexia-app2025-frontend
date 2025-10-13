@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { $fetch as ofetch } from 'ofetch'
+import { onMounted, ref } from 'vue'
 
 // Emit events for parent components
 const emit = defineEmits<{
@@ -20,12 +21,28 @@ const userInfo = ref({
   fullName: 'John Doe', // This would come from props or store
 })
 
+onMounted(() => {
+  // Force all subsequent $fetch calls to include credentials (cookies)
+  const config = useRuntimeConfig()
+  const api = ofetch.create({
+    baseURL: config.public.apiBaseUrl,
+    credentials: 'include',
+  })
+  // Override global $fetch for the rest of the app lifecycle
+  // @ts-expect-error override runtime global
+  globalThis.$fetch = api
+})
+
 function handleLogout() {
   console.log('Logout clicked!')
 
   try {
     // Clear the auth cookie (same key as used for checks)
-    const authCookie = useCookie<string | null>('authToken', { path: '/' })
+    const authCookie = useCookie<string | null>('authToken', {
+      path: '/',
+      sameSite: 'none',
+      secure: true,
+    })
     authCookie.value = null
 
     // Clear localStorage token
