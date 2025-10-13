@@ -8,6 +8,7 @@ const emit = defineEmits<{
   goBack: []
   photoTaken: [imageData: string]
   imageUploaded: [imageData: string]
+  analysisComplete: [result: any]
 }>()
 
 // Camera state
@@ -20,6 +21,108 @@ const cameraError = ref('')
 
 // File upload state
 const fileInputRef = ref<HTMLInputElement>()
+
+// Analysis state
+const isAnalyzing = ref(false)
+const analysisError = ref('')
+// Shared state to pass analysis result across pages (Nuxt useState)
+const analysisText = useState<string>('lexiaAnalysisText', () => '')
+
+// Convert base64 to File object
+function base64ToFile(base64: string, filename: string): File {
+  const arr = base64.split(',')
+
+  // Validate the base64 format
+  if (arr.length !== 2) {
+    throw new Error('Invalid base64 format')
+  }
+
+  // Safely extract MIME type
+  const mimeMatch = arr[0]?.match(/:(.*?);/)
+  if (!mimeMatch || !mimeMatch[1]) {
+    throw new Error('Unable to determine MIME type from base64 string')
+  }
+
+  const mime = mimeMatch[1]
+  const base64Data = arr[1] // Now TypeScript knows this exists
+
+  if (!base64Data) {
+    throw new Error('No base64 data found')
+  }
+
+  const bstr = atob(base64Data)
+  let n = bstr.length
+  const u8arr = new Uint8Array(n)
+
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n)
+  }
+
+  return new File([u8arr], filename, { type: mime })
+}
+
+// Send image to backend for analysis
+async function analyzeImage(imageData: string, source: 'camera' | 'upload') {
+  try {
+    isAnalyzing.value = true
+    analysisError.value = ''
+
+    // Convert base64 to File
+    const filename = `image_${Date.now()}.jpg`
+    const file = base64ToFile(imageData, filename)
+    const token = localStorage.getItem('authToken') || ''
+
+    // Create FormData
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('prompt', 'Extract text and share only the text in the image')
+
+    // Send to backend API
+    const response = await $fetch(`${useRuntimeConfig().public.apiBaseUrl}/images/analyze-image`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`, // Add this header
+      },
+      body: formData,
+    })
+
+    console.log('Analysis result:', response)
+
+    // Emit result to parent component
+    emit('analysisComplete', {
+      source,
+      imageData,
+      analysis: response,
+
+    })
+
+    // Persist analysis text for result page
+    try {
+      // Prefer response.analysis if present, else stringify response
+      const text = (response as any)?.analysis ?? (typeof response === 'string' ? response : JSON.stringify(response))
+      analysisText.value = text ?? ''
+      // Also store in localStorage as a fallback for unexpected reloads
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('lexiaAnalysisText', analysisText.value)
+      }
+    }
+    catch (e) {
+      console.warn('Unable to persist analysis text:', e)
+    }
+
+    // Navigate to result page
+    await navigateTo({
+      path: '/result',
+    })
+  }
+  catch (error) {
+    console.error('Error analyzing image:', error)
+    analysisError.value = error instanceof Error ? error.message : 'Failed to analyze image. Please try again.'
+  }
+  finally {
+    isAnalyzing.value = false
+  }
+}
 
 async function startCamera() {
   try {
@@ -55,7 +158,7 @@ async function startCamera() {
   }
 }
 
-function capturePhoto() {
+async function capturePhoto() {
   if (!videoRef.value || !canvasRef.value)
     return
 
@@ -81,6 +184,9 @@ function capturePhoto() {
 
   // Close camera
   closeCamera()
+
+  // Send to backend for analysis
+  await analyzeImage(imageData, 'camera')
 }
 
 function closeCamera() {
@@ -102,16 +208,19 @@ function handleUploadImage() {
   }
 }
 
-function handleFileChange(event: Event) {
+async function handleFileChange(event: Event) {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
 
   if (file && file.type.startsWith('image/')) {
     const reader = new FileReader()
 
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const imageData = e.target?.result as string
       emit('imageUploaded', imageData)
+
+      // Send to backend for analysis
+      await analyzeImage(imageData, 'upload')
     }
 
     reader.readAsDataURL(file)
@@ -131,6 +240,21 @@ function handleFileChange(event: Event) {
   <div class="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
     <div class="w-full">
       <div class="max-w-sm mx-auto px-6 py-8">
+        <!-- Analysis Loading Overlay -->
+        <div v-if="isAnalyzing" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div class="bg-white rounded-2xl p-6 max-w-sm mx-4">
+            <div class="text-center">
+              <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+              <h3 class="text-lg font-semibold text-gray-800 mb-2">
+                Analyzing Image
+              </h3>
+              <p class="text-gray-600 text-sm">
+                Please wait while we process your image...
+              </p>
+            </div>
+          </div>
+        </div>
+
         <!-- Camera View -->
         <div v-if="showCamera" class="fixed inset-0 bg-black z-50 flex flex-col">
           <!-- Camera Header -->
@@ -178,6 +302,7 @@ function handleFileChange(event: Event) {
               <!-- Capture Button -->
               <button
                 class="w-20 h-20 bg-white rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-lg"
+                :disabled="isAnalyzing"
                 @click="capturePhoto"
               >
                 <div class="w-16 h-16 bg-white border-4 border-gray-300 rounded-full" />
@@ -231,6 +356,18 @@ function handleFileChange(event: Event) {
             </p>
           </div>
 
+          <!-- Analysis Error -->
+          <div v-if="analysisError" class="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6">
+            <div class="flex items-center space-x-2">
+              <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p class="text-red-700 text-sm">
+                {{ analysisError }}
+              </p>
+            </div>
+          </div>
+
           <!-- Main Action Card -->
           <div class="bg-white rounded-2xl shadow-xl shadow-blue-100/50 p-6 mb-6">
             <div class="text-center mb-6">
@@ -252,7 +389,7 @@ function handleFileChange(event: Event) {
               <!-- Take Photo Button -->
               <button
                 class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-4 rounded-xl font-semibold transition-all duration-200 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 shadow-lg flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                :disabled="isCameraLoading"
+                :disabled="isCameraLoading || isAnalyzing"
                 @click="handleTakePhoto"
               >
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -264,7 +401,8 @@ function handleFileChange(event: Event) {
 
               <!-- Upload Image Button -->
               <button
-                class="w-full border border-gray-300 hover:border-gray-400 text-gray-700 hover:text-gray-800 py-4 rounded-xl font-medium transition-all duration-200 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center justify-center space-x-2"
+                class="w-full border border-gray-300 hover:border-gray-400 text-gray-700 hover:text-gray-800 py-4 rounded-xl font-medium transition-all duration-200 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                :disabled="isAnalyzing"
                 @click="handleUploadImage"
               >
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
