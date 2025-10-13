@@ -90,6 +90,7 @@ async function handleCreateAccount(event?: Event) {
     const registerUrl = `${apiBaseUrl}/auth/register`
     const data = await $fetch(registerUrl, {
       method: 'POST',
+      credentials: 'include', // ensure Set-Cookie from cross-origin is accepted
       body: {
         email: formData.email,
         password: formData.password,
