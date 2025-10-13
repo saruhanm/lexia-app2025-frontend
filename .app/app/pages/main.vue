@@ -1,13 +1,17 @@
 <script setup lang="ts">
-definePageMeta({
-  middleware: [
-    () => {
-      const token = useCookie<string | null>('token')
-      if (!token.value) {
-        return navigateTo('/')
-      }
-    },
-  ],
+import { onMounted } from 'vue'
+
+onMounted(() => {
+  const authCookie = useCookie<string | null>('authToken')
+  let hasToken = !!authCookie.value
+
+  if (!hasToken && process.client) {
+    hasToken = !!localStorage.getItem('authToken')
+  }
+
+  if (!hasToken) {
+    navigateTo('/', { replace: true })
+  }
 })
 </script>
 

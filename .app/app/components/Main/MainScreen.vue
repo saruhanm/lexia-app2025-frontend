@@ -24,8 +24,8 @@ function handleLogout() {
   console.log('Logout clicked!')
 
   try {
-    // Clear the auth cookie
-    const authCookie = useCookie('authToken')
+    // Clear the auth cookie (same key as used for checks)
+    const authCookie = useCookie<string | null>('authToken', { path: '/' })
     authCookie.value = null
 
     // Clear localStorage token
@@ -36,7 +36,7 @@ function handleLogout() {
     console.log('Tokens cleared successfully')
 
     // Navigate back to login page
-    navigateTo('/')
+    navigateTo('/', { replace: true })
 
     console.log('Redirected to login page')
   }
