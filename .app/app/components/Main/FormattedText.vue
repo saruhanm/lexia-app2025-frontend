@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 // Props
 interface Props {
@@ -38,6 +38,8 @@ const settings = ref<SettResponse>({
 const displayText = ref(props.text)
 const isLoading = ref(false)
 const error = ref('')
+const isSpeaking = ref(false)
+let utterance: SpeechSynthesisUtterance | null = null
 
 // Computed styles for text display
 const textDisplayStyles = computed(() => ({
@@ -138,6 +140,46 @@ function downloadText() {
   URL.revokeObjectURL(url)
 }
 
+function supportsSpeech() {
+  return typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined'
+}
+
+function toggleSpeech() {
+  if (!supportsSpeech()) {
+    console.warn('Speech synthesis is not supported in this browser.')
+    return
+  }
+
+  if (isSpeaking.value) {
+    window.speechSynthesis.cancel()
+    isSpeaking.value = false
+    utterance = null
+    return
+  }
+
+  const text = displayText.value?.trim()
+  if (!text)
+    return
+
+  utterance = new SpeechSynthesisUtterance(text)
+  utterance.lang = (typeof navigator !== 'undefined' && navigator.language) ? navigator.language : 'en-US'
+  utterance.rate = 1
+  utterance.pitch = 1
+  utterance.onend = () => {
+    isSpeaking.value = false
+    utterance = null
+  }
+  utterance.onerror = () => {
+    isSpeaking.value = false
+    utterance = null
+  }
+
+  // Ensure no overlapping speech
+  window.speechSynthesis.cancel()
+  window.speechSynthesis.speak(utterance)
+  isSpeaking.value = true
+}
+
 // Lifecycle
 onMounted(async () => {
   await loadUserSettings()
@@ -145,6 +187,14 @@ onMounted(async () => {
   if (props.text) {
     displayText.value = props.text
   }
+})
+
+onBeforeUnmount(() => {
+  if (supportsSpeech()) {
+    window.speechSynthesis.cancel()
+  }
+  isSpeaking.value = false
+  utterance = null
 })
 
 // Watch for prop changes
@@ -236,6 +286,21 @@ watch(() => props.text, (newText) => {
                 </svg>
               </button>
             </div>
+            <button
+              class="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors ml-2"
+              :title="isSpeaking ? 'Stop reading' : 'Read text aloud'"
+              :aria-label="isSpeaking ? 'Stop reading' : 'Read text aloud'"
+              @click="toggleSpeech"
+            >
+              <svg v-if="!isSpeaking" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5L6 9H3v6h3l5 4V5z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.54 8.46a5 5 0 010 7.07" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.07 4.93a9 9 0 010 12.73" />
+              </svg>
+              <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 6h12v12H6z" />
+              </svg>
+            </button>
           </div>
         </div>
 
