@@ -13,7 +13,7 @@ export default defineNuxtConfig({
   // GitHub Pages configuration
   ssr: false, // Disable server-side rendering for static generation
   app: {
-    baseURL: '/girls-frontend/',
+    baseURL: '/lexia-app2025-frontend/',
     buildAssetsDir: '/_nuxt/',
   },
   nitro: {
